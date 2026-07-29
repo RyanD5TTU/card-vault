@@ -142,6 +142,8 @@
   .txn-type.purchase{background:#2B2440;color:#B49BE0;}
   .txn-type.sale{background:#1F3A2E;color:var(--green);}
   .txn-type.other{background:#2A2A2A;color:var(--muted);}
+  .txn-type.deposit{background:#1E3A4A;color:#7FC4E0;}
+  .txn-type.withdrawal{background:#3A2E1E;color:var(--gold-bright);}
   .voided{opacity:.4;text-decoration:line-through;}
 
   .toolbar{display:flex;gap:8px;flex-wrap:wrap;}
@@ -330,6 +332,26 @@ function renderAll(){
   renderLedger();
 }
 
+/* ---------------- DASHBOARD HELPERS ---------------- */
+function daysBetween(d1, d2){
+  const a = new Date(d1), b = new Date(d2);
+  if(isNaN(a) || isNaN(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+function itemNetProfit(i){
+  if(i.status!=='Sold') return null;
+  return Number(i.salePrice||0) - Number(i.purchasePrice||0) - Number(i.fees||0) - Number(i.shipping||0);
+}
+function monthKey(dateStr){
+  if(!dateStr) return null;
+  return dateStr.slice(0,7); // "YYYY-MM"
+}
+function monthLabel(key){
+  const [y,m] = key.split('-');
+  const d = new Date(Number(y), Number(m)-1, 1);
+  return d.toLocaleDateString(undefined,{month:'short',year:'numeric'});
+}
+
 /* ---------------- DASHBOARD ---------------- */
 function renderDashboard(){
   const forResale = items.filter(i=>i.status==='In Inventory'||i.status==='Listed for Sale');
@@ -352,9 +374,63 @@ function renderDashboard(){
   const marginPct = costBasisSold>0 ? (netProfit/costBasisSold*100) : null;
   const multiple = costBasisSold>0 ? (revenue/costBasisSold) : null;
 
+  // Cash on Hand = money actually received from sales, after fees/shipping.
+  // Purchase price is NOT subtracted here — it's treated as recouped once the card sells.
   const totalSpent = items.reduce((s,i)=>s+Number(i.purchasePrice||0),0);
-  const totalReceived = revenue - fees;
-  const cashOnHand = totalReceived - totalSpent;
+  const cashOnHand = revenue - fees;
+  const contributions = transactions.filter(t=>t.type==='deposit' && !t.voided).reduce((s,t)=>s+Number(t.amount||0),0);
+  const withdrawals = transactions.filter(t=>t.type==='withdrawal' && !t.voided).reduce((s,t)=>s+Number(t.amount||0),0);
+  const totalCashOnHand = cashOnHand + contributions - withdrawals;
+
+  // Time-based performance
+  const now = new Date();
+  const currentMonthKey = now.toISOString().slice(0,7);
+  const currentYear = String(now.getFullYear());
+  const thisMonthProfit = sold.filter(i=>monthKey(i.saleDate)===currentMonthKey).reduce((s,i)=>s+(itemNetProfit(i)||0),0);
+  const thisYearProfit = sold.filter(i=>(i.saleDate||'').startsWith(currentYear)).reduce((s,i)=>s+(itemNetProfit(i)||0),0);
+
+  const holdingDaysList = sold.map(i=>daysBetween(i.purchaseDate, i.saleDate)).filter(d=>d!==null && d>=0);
+  const avgHolding = holdingDaysList.length ? Math.round(holdingDaysList.reduce((a,b)=>a+b,0)/holdingDaysList.length) : null;
+
+  const monthlyMap = {};
+  sold.forEach(i=>{
+    const key = monthKey(i.saleDate);
+    if(!key) return;
+    if(!monthlyMap[key]) monthlyMap[key] = {count:0, revenue:0, netProfit:0};
+    monthlyMap[key].count += Number(i.qty||1);
+    monthlyMap[key].revenue += Number(i.salePrice||0);
+    monthlyMap[key].netProfit += (itemNetProfit(i)||0);
+  });
+  const monthlyRows = Object.keys(monthlyMap).sort().reverse().slice(0,12).map(key=>{
+    const m = monthlyMap[key];
+    return `<tr>
+      <td>${monthLabel(key)}</td>
+      <td>${m.count}</td>
+      <td>${fmtMoney(m.revenue)}</td>
+      <td class="${m.netProfit>=0?'amt-pos':'amt-neg'}"><strong>${m.netProfit>=0?'+':''}${fmtMoney(m.netProfit)}</strong></td>
+    </tr>`;
+  }).join('');
+
+  // Top / worst performers
+  const soldWithProfit = sold.map(i=>({item:i, profit: itemNetProfit(i)})).filter(x=>x.profit!==null);
+  const topWins = [...soldWithProfit].sort((a,b)=>b.profit-a.profit).slice(0,5);
+  const topLosses = [...soldWithProfit].sort((a,b)=>a.profit-b.profit).slice(0,5);
+  const performerRow = (x) => `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #232C36;font-size:13px;">
+      <span>${x.item.player||''} <span style="color:var(--muted);font-size:11.5px;">${x.item.setInfo||''}</span></span>
+      <span class="${x.profit>=0?'amt-pos':'amt-neg'}"><strong>${x.profit>=0?'+':''}${fmtMoney(x.profit)}</strong></span>
+    </div>`;
+
+  // Aging inventory (90+ days unsold, excludes PC)
+  const aging = forResale.map(i=>({item:i, days: daysBetween(i.purchaseDate, now.toISOString().slice(0,10))}))
+    .filter(x=>x.days!==null && x.days>=90)
+    .sort((a,b)=>b.days-a.days);
+  const agingRows = aging.map(x=>`<tr>
+      <td>${x.item.player||''}<br><span style="color:var(--muted);font-size:11px;">${x.item.setInfo||''}</span></td>
+      <td>${slabHtml(x.item.grading)}</td>
+      <td><strong>${x.days} days</strong></td>
+      <td>${fmtMoney(x.item.purchasePrice)}</td>
+      <td>${fmtMoney(x.item.marketValue)}</td>
+    </tr>`).join('');
 
   const lastTxn = transactions.filter(t=>!t.voided).sort((a,b)=>b.createdAt-a.createdAt)[0];
 
@@ -393,17 +469,67 @@ function renderDashboard(){
           <div class="value ${marginPct===null?'':(marginPct>=0?'pos':'neg')}">${marginPct===null?'—':(marginPct>=0?'+':'')+marginPct.toFixed(1)+'%'}</div>
           <div class="sub">${multiple===null?'':multiple.toFixed(2)+'x your money'}</div>
         </div>
+        <div class="kpi"><div class="label">Avg. Holding Period</div><div class="value">${avgHolding===null?'—':avgHolding+' days'}</div></div>
       </div>
+    </div>
+
+    <div class="panel">
+      <h2>Time-Based Performance</h2>
+      <div class="kpi-grid" style="margin-bottom:16px;">
+        <div class="kpi"><div class="label">This Month — Net Profit</div><div class="value ${thisMonthProfit>=0?'pos':'neg'}">${thisMonthProfit>=0?'+':''}${fmtMoney(thisMonthProfit)}</div></div>
+        <div class="kpi"><div class="label">This Year — Net Profit</div><div class="value ${thisYearProfit>=0?'pos':'neg'}">${thisYearProfit>=0?'+':''}${fmtMoney(thisYearProfit)}</div></div>
+      </div>
+      ${monthlyRows ? `
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>Month</th><th>Items Sold</th><th>Revenue</th><th>Net Profit</th></tr></thead>
+          <tbody>${monthlyRows}</tbody>
+        </table>
+      </div>` : '<p style="color:var(--muted);font-size:13px;">No sales recorded yet.</p>'}
+    </div>
+
+    <div class="panel">
+      <h2>Top Performers</h2>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+        <div>
+          <div style="color:var(--green);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Top 5 Wins</div>
+          ${topWins.length ? topWins.map(performerRow).join('') : '<p style="color:var(--muted);font-size:13px;">No sales yet.</p>'}
+        </div>
+        <div>
+          <div style="color:var(--rust);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Top 5 Losses</div>
+          ${topLosses.length ? topLosses.map(performerRow).join('') : '<p style="color:var(--muted);font-size:13px;">No sales yet.</p>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Aging Inventory (90+ Days Unsold)</h2>
+      ${agingRows ? `
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr><th>Card</th><th>Grade</th><th>Days Held</th><th>Purchase Price</th><th>Market Value</th></tr></thead>
+          <tbody>${agingRows}</tbody>
+        </table>
+      </div>` : '<p style="color:var(--muted);font-size:13px;">Nothing sitting 90+ days — good turnover.</p>'}
     </div>
 
     <div class="panel">
       <h2>Cash Flow</h2>
       <div class="kpi-grid">
-        <div class="kpi"><div class="label">Total Spent (All Purchases)</div><div class="value">${fmtMoney(totalSpent)}</div></div>
-        <div class="kpi"><div class="label">Total Received (Net of Fees)</div><div class="value">${fmtMoney(totalReceived)}</div></div>
-        <div class="kpi"><div class="label">Net Cash on Hand</div><div class="value ${cashOnHand>=0?'pos':'neg'}">${cashOnHand>=0?'+':''}${fmtMoney(cashOnHand)}</div></div>
+        <div class="kpi"><div class="label">Total Spent (All Purchases)</div><div class="value">${fmtMoney(totalSpent)}</div><div class="sub">reference only — not subtracted below</div></div>
+        <div class="kpi"><div class="label">Total Sale Value</div><div class="value">${fmtMoney(revenue)}</div></div>
+        <div class="kpi"><div class="label">Fees + Shipping Paid</div><div class="value">${fmtMoney(fees)}</div></div>
+        <div class="kpi">
+          <div class="label">Cash on Hand</div>
+          <div class="value ${cashOnHand>=0?'pos':'neg'}">${cashOnHand>=0?'+':''}${fmtMoney(cashOnHand)}</div>
+          <div class="sub">sale value − fees/shipping (purchase cost recouped on sale)</div>
+        </div>
+        <div class="kpi"><div class="label">External Contributions</div><div class="value">${fmtMoney(contributions)}</div><div class="sub">money added from outside</div></div>
+        <div class="kpi"><div class="label">Withdrawals</div><div class="value">${fmtMoney(withdrawals)}</div><div class="sub">money pulled out</div></div>
+        <div class="kpi"><div class="label">Total Cash on Hand</div><div class="value ${totalCashOnHand>=0?'pos':'neg'}">${totalCashOnHand>=0?'+':''}${fmtMoney(totalCashOnHand)}</div><div class="sub">cash on hand + outside contributions</div></div>
       </div>
     </div>
+
 
     <div class="panel">
       <h2>Audit Trail Status</h2>
@@ -666,6 +792,8 @@ async function submitSellForm(){
   renderAll();
 }
 
+function isCashInflow(type){ return type==='sale' || type==='deposit'; }
+
 function txnProfit(t){
   if(t.type!=='sale' || !t.itemId) return null;
   const item = items.find(i=>i.id===t.itemId);
@@ -726,7 +854,7 @@ function renderLedger(){
       <td>${t.date}</td>
       <td><span class="txn-type ${t.type}">${t.type.toUpperCase()}</span></td>
       <td>${descHtml}</td>
-      <td class="${t.type==='sale'?'amt-pos':'amt-neg'}">${t.type==='sale'?'+':'-'}${fmtMoney(t.amount)}</td>
+      <td class="${isCashInflow(t.type)?'amt-pos':'amt-neg'}">${isCashInflow(t.type)?'+':'-'}${fmtMoney(t.amount)}</td>
       <td>${fmtMoney(t.fees)}</td>
       <td>${fmtMoney(t.shipping)}</td>
       <td>${profitCell}</td>
@@ -754,7 +882,7 @@ function renderLedger(){
         <div>
           <label>Type</label>
           <select onchange="updateLedgerFilter('type', this.value)">
-            ${['All','purchase','sale','other'].map(t=>`<option value="${t}" ${ledgerFilters.type===t?'selected':''}>${t==='All'?'All':t.toUpperCase()}</option>`).join('')}
+            ${['All','purchase','sale','deposit','withdrawal','other'].map(t=>`<option value="${t}" ${ledgerFilters.type===t?'selected':''}>${t==='All'?'All':t.toUpperCase()}</option>`).join('')}
           </select>
         </div>
         <div class="field-span-2">
@@ -781,9 +909,9 @@ function renderLedger(){
 }
 
 const TXN_FIELDS = [
-  {k:'type',label:'Type',type:'select',opts:['purchase','sale','other']},
+  {k:'type',label:'Type',type:'select',opts:['purchase','sale','deposit','withdrawal','other']},
   {k:'date',label:'Date',type:'date'},
-  {k:'description',label:'Description',type:'text',ph:'Bulk lot, supplies, shipping box...',span:2},
+  {k:'description',label:'Description',type:'text',ph:'Bulk lot, supplies, salary deposit...',span:2},
   {k:'amount',label:'Amount ($)',type:'number'},
   {k:'fees',label:'Fees ($)',type:'number'},
   {k:'shipping',label:'Shipping ($)',type:'number'},
