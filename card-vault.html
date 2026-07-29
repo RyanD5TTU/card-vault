@@ -1,0 +1,847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Vault — Collection Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bitter:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#12161C;
+    --panel:#1B222B;
+    --panel-2:#212A34;
+    --border:#2B3542;
+    --gold:#C6A15B;
+    --gold-bright:#E0C285;
+    --green:#5B9279;
+    --rust:#B2604A;
+    --text:#EDEAE3;
+    --muted:#8B94A0;
+    --radius:6px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--ink);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    font-size:14px;
+    line-height:1.5;
+  }
+  h1,h2,h3{font-family:'Bitter',serif; margin:0;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  #app{max-width:1180px;margin:0 auto;padding:28px 24px 80px;}
+
+  /* Header */
+  .header{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:10px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{
+    width:38px;height:38px;border:2px solid var(--gold);border-radius:4px;
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Bitter',serif;font-weight:700;color:var(--gold);font-size:15px;
+    background:linear-gradient(160deg,#1E2731,#161B22);
+  }
+  .brand h1{font-size:22px;letter-spacing:.3px;}
+  .brand p{margin:2px 0 0;color:var(--muted);font-size:12px;}
+
+  /* Tabs */
+  .tabs{display:flex;gap:6px;border-bottom:1px solid var(--border);margin-bottom:22px;}
+  .tab{
+    padding:10px 18px;cursor:pointer;color:var(--muted);font-weight:600;font-size:13px;
+    border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;
+    position:relative;top:1px;letter-spacing:.2px;
+  }
+  .tab.active{color:var(--gold-bright);background:var(--panel);border-color:var(--border);border-bottom:1px solid var(--panel);}
+  .tab:hover:not(.active){color:var(--text);}
+
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:18px;}
+  .panel h2{font-size:15px;color:var(--gold-bright);margin-bottom:14px;letter-spacing:.3px;}
+  .section-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;}
+
+  /* KPI grid */
+  .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;}
+  .kpi{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;}
+  .kpi .label{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;margin-bottom:6px;}
+  .kpi .value{font-family:'Bitter',serif;font-size:22px;font-weight:600;}
+  .kpi .value.pos{color:var(--green);}
+  .kpi .value.neg{color:var(--rust);}
+  .kpi .sub{color:var(--muted);font-size:11px;margin-top:4px;}
+
+  /* Buttons */
+  button{
+    font-family:'Inter',sans-serif;font-weight:600;font-size:12.5px;
+    border-radius:5px;border:1px solid var(--border);
+    background:var(--panel-2);color:var(--text);
+    padding:8px 14px;cursor:pointer;transition:all .12s;
+  }
+  button:hover{border-color:var(--gold);color:var(--gold-bright);}
+  button.primary{background:var(--gold);color:#1A1300;border-color:var(--gold);}
+  button.primary:hover{background:var(--gold-bright);color:#1A1300;}
+  button.ghost{background:transparent;}
+  button.danger:hover{border-color:var(--rust);color:var(--rust);}
+  button.small{padding:4px 9px;font-size:11.5px;}
+
+  /* Table */
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead th{
+    text-align:left;color:var(--muted);font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
+    padding:8px 10px;border-bottom:1px solid var(--border);white-space:nowrap;
+  }
+  tbody td{padding:9px 10px;border-bottom:1px solid #232C36;vertical-align:middle;}
+  tbody tr:hover{background:#1F2833;}
+  .empty-row td{color:var(--muted);text-align:center;padding:30px 10px;font-style:italic;}
+
+  /* Slab badge (signature element) */
+  .slab{
+    display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
+    border:1.5px solid var(--gold);border-radius:4px;padding:2px 8px;min-width:52px;
+    background:linear-gradient(180deg,#20262f,#171c23);
+  }
+  .slab .co{font-size:8.5px;letter-spacing:1px;color:var(--gold-bright);font-family:'IBM Plex Mono',monospace;}
+  .slab .grade{font-size:13px;font-weight:700;color:var(--text);font-family:'Bitter',serif;line-height:1.1;}
+  .slab.raw{border-color:#4A5462;}
+  .slab.raw .co{color:var(--muted);}
+
+  /* Status badge */
+  .status{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap;}
+  .status.inv{background:#233444;color:#7FB6E0;}
+  .status.listed{background:#3A3320;color:var(--gold-bright);}
+  .status.sold{background:#1F3A2E;color:var(--green);}
+  .status.traded{background:#3A2323;color:var(--rust);}
+  .status.pc{background:#2A2E3D;color:#A9B4D6;}
+
+  /* Forms */
+  .form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:14px;}
+  label{display:block;font-size:11px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.4px;}
+  input,select,textarea{
+    width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:5px;
+    color:var(--text);padding:8px 9px;font-family:'Inter',sans-serif;font-size:13px;
+  }
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);}
+  textarea{resize:vertical;min-height:50px;}
+  .field-span-2{grid-column:span 2;}
+
+  /* Modal */
+  .overlay{
+    position:fixed;inset:0;background:rgba(10,12,15,.72);display:none;
+    align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto;z-index:50;
+  }
+  .overlay.open{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:22px;width:100%;max-width:640px;}
+  .modal h3{color:var(--gold-bright);margin-bottom:16px;font-size:16px;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:6px;}
+
+  .audit-note{
+    display:flex;gap:8px;align-items:flex-start;background:#1E2731;border:1px dashed var(--border);
+    border-radius:5px;padding:10px 12px;color:var(--muted);font-size:12px;margin-bottom:16px;
+  }
+  .audit-note strong{color:var(--gold-bright);}
+
+  .txn-type{font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;letter-spacing:.4px;}
+  .txn-type.purchase{background:#2B2440;color:#B49BE0;}
+  .txn-type.sale{background:#1F3A2E;color:var(--green);}
+  .txn-type.other{background:#2A2A2A;color:var(--muted);}
+  .voided{opacity:.4;text-decoration:line-through;}
+
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;}
+  .loading{color:var(--muted);font-style:italic;padding:20px 0;}
+  .amt-pos{color:var(--green);}
+  .amt-neg{color:var(--rust);}
+
+  ::-webkit-scrollbar{height:8px;width:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<div id="loginScreen" style="max-width:380px;margin:80px auto;padding:0 20px;">
+  <div class="panel" style="text-align:center;">
+    <div class="brand-mark" style="margin:0 auto 14px;">CV</div>
+    <h2 style="margin-bottom:4px;">The Vault</h2>
+    <p style="color:var(--muted);font-size:12px;margin:0 0 20px;">Sign in to access your collection ledger</p>
+    <div style="text-align:left;">
+      <label>Email</label>
+      <input type="email" id="loginEmail" style="margin-bottom:12px;">
+      <label>Password</label>
+      <input type="password" id="loginPassword" style="margin-bottom:16px;">
+    </div>
+    <button class="primary" style="width:100%;" onclick="doLogin()">Sign In</button>
+    <p id="loginError" style="color:var(--rust);font-size:12px;margin-top:12px;"></p>
+  </div>
+</div>
+
+<div id="app" style="display:none;">
+  <div class="header">
+    <div class="brand">
+      <div class="brand-mark">CV</div>
+      <div>
+        <h1>The Vault</h1>
+        <p>Personal collection ledger &amp; audit trail</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button class="ghost small" onclick="exportCSV()">Export ledger (.csv)</button>
+      <button class="ghost small" onclick="doSignOut()">Sign Out</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="dashboard" onclick="switchTab('dashboard')">Dashboard</div>
+    <div class="tab" data-tab="inventory" onclick="switchTab('inventory')">Inventory</div>
+    <div class="tab" data-tab="ledger" onclick="switchTab('ledger')">Transaction Ledger</div>
+  </div>
+
+  <div id="tab-dashboard"></div>
+  <div id="tab-inventory" style="display:none;"></div>
+  <div id="tab-ledger" style="display:none;"></div>
+</div>
+
+<!-- Item modal -->
+<div class="overlay" id="itemModalOverlay">
+  <div class="modal">
+    <h3 id="itemModalTitle">Add Card</h3>
+    <div class="form-grid" id="itemFormGrid"></div>
+    <div class="modal-actions">
+      <button class="ghost" onclick="closeItemModal()">Cancel</button>
+      <button class="primary" onclick="submitItemForm()">Save Card</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sell modal -->
+<div class="overlay" id="sellModalOverlay">
+  <div class="modal">
+    <h3>Record Sale</h3>
+    <div class="audit-note"><strong>Note:</strong> This creates a permanent, timestamped entry in your Transaction Ledger.</div>
+    <div class="form-grid" id="sellFormGrid"></div>
+    <div class="modal-actions">
+      <button class="ghost" onclick="closeSellModal()">Cancel</button>
+      <button class="primary" onclick="submitSellForm()">Confirm Sale</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manual transaction modal -->
+<div class="overlay" id="txnModalOverlay">
+  <div class="modal">
+    <h3>Add Ledger Entry</h3>
+    <div class="form-grid" id="txnFormGrid"></div>
+    <div class="modal-actions">
+      <button class="ghost" onclick="closeTxnModal()">Cancel</button>
+      <button class="primary" onclick="submitTxnForm()">Save Entry</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let items = [];
+let transactions = [];
+let editingItemId = null;
+let sellingItemId = null;
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const fmtMoney = n => (n===null||n===undefined||n==='') ? '—' : '$' + Number(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtDate = d => d ? d : '—';
+const fmtStamp = ts => new Date(ts).toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+
+const SUPABASE_URL = 'https://afzcgnmcuydcgmkhajwj.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_hp7f6XDGFk-BDSliHyC_8w_e9Q5CXVF';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+let currentUserId = null;
+
+async function doLogin(){
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl = document.getElementById('loginError');
+  errEl.textContent = '';
+  if(!email || !password){ errEl.textContent = 'Enter email and password.'; return; }
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if(error){ errEl.textContent = error.message; return; }
+  currentUserId = data.user.id;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  await loadData();
+}
+
+async function doSignOut(){
+  await sb.auth.signOut();
+  currentUserId = null;
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'block';
+  document.getElementById('loginEmail').value = '';
+  document.getElementById('loginPassword').value = '';
+}
+
+async function checkExistingSession(){
+  const { data } = await sb.auth.getSession();
+  if(data && data.session){
+    currentUserId = data.session.user.id;
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    await loadData();
+  }
+}
+
+async function loadData(){
+  try{
+    const { data, error } = await sb.from('kv_store').select('key,value').eq('user_id', currentUserId);
+    if(error) throw error;
+    const invRow = data.find(r=>r.key==='inventory-items');
+    const txnRow = data.find(r=>r.key==='transactions');
+    items = invRow ? invRow.value : [];
+    transactions = txnRow ? txnRow.value : [];
+  }catch(e){
+    console.error('Failed to load data', e);
+    items = []; transactions = [];
+  }
+  renderAll();
+}
+
+async function saveItems(){
+  try{
+    const { error } = await sb.from('kv_store').upsert(
+      { key:'inventory-items', user_id: currentUserId, value: items, updated_at: new Date().toISOString() },
+      { onConflict:'key,user_id' }
+    );
+    if(error) throw error;
+  }catch(e){ console.error('Failed to save inventory', e); alert('Could not save — please try again.'); }
+}
+async function saveTransactions(){
+  try{
+    const { error } = await sb.from('kv_store').upsert(
+      { key:'transactions', user_id: currentUserId, value: transactions, updated_at: new Date().toISOString() },
+      { onConflict:'key,user_id' }
+    );
+    if(error) throw error;
+  }catch(e){ console.error('Failed to save transactions', e); alert('Could not save — please try again.'); }
+}
+
+function switchTab(name){
+  ['dashboard','inventory','ledger'].forEach(t=>{
+    document.getElementById('tab-'+t).style.display = (t===name)?'block':'none';
+    document.querySelector('.tab[data-tab="'+t+'"]').classList.toggle('active', t===name);
+  });
+}
+
+function renderAll(){
+  renderDashboard();
+  renderInventory();
+  renderLedger();
+}
+
+/* ---------------- DASHBOARD ---------------- */
+function renderDashboard(){
+  const forResale = items.filter(i=>i.status==='In Inventory'||i.status==='Listed for Sale');
+  const pc = items.filter(i=>i.status==='Personal Collection (PC)');
+  const sold = items.filter(i=>i.status==='Sold');
+
+  const costBasisResale = forResale.reduce((s,i)=>s+Number(i.purchasePrice||0),0);
+  const marketValueResale = forResale.reduce((s,i)=>s+Number(i.marketValue||0),0);
+  const unrealizedResale = marketValueResale - costBasisResale;
+
+  const costBasisPC = pc.reduce((s,i)=>s+Number(i.purchasePrice||0),0);
+  const marketValuePC = pc.reduce((s,i)=>s+Number(i.marketValue||0),0);
+  const unrealizedPC = marketValuePC - costBasisPC;
+
+  const revenue = sold.reduce((s,i)=>s+Number(i.salePrice||0),0);
+  const costBasisSold = sold.reduce((s,i)=>s+Number(i.purchasePrice||0),0);
+  const fees = sold.reduce((s,i)=>s+Number(i.fees||0)+Number(i.shipping||0),0);
+  const grossProfit = revenue - costBasisSold;
+  const netProfit = grossProfit - fees;
+  const marginPct = costBasisSold>0 ? (netProfit/costBasisSold*100) : null;
+  const multiple = costBasisSold>0 ? (revenue/costBasisSold) : null;
+
+  const totalSpent = items.reduce((s,i)=>s+Number(i.purchasePrice||0),0);
+  const totalReceived = revenue - fees;
+  const cashOnHand = totalReceived - totalSpent;
+
+  const lastTxn = transactions.filter(t=>!t.voided).sort((a,b)=>b.createdAt-a.createdAt)[0];
+
+  const html = `
+    <div class="panel">
+      <h2>Portfolio Snapshot (For Resale)</h2>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">Unsold Items</div><div class="value">${forResale.reduce((s,i)=>s+Number(i.qty||1),0)}</div><div class="sub">${forResale.length} listings</div></div>
+        <div class="kpi"><div class="label">Cost Basis</div><div class="value">${fmtMoney(costBasisResale)}</div></div>
+        <div class="kpi"><div class="label">Market Value</div><div class="value">${fmtMoney(marketValueResale)}</div><div class="sub">from your comp entries</div></div>
+        <div class="kpi"><div class="label">Unrealized Gain / Loss</div><div class="value ${unrealizedResale>=0?'pos':'neg'}">${unrealizedResale>=0?'+':''}${fmtMoney(unrealizedResale)}</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Personal Collection (PC)</h2>
+      <p style="color:var(--muted);font-size:12px;margin:0 0 12px;">Cards you're keeping, not flipping. Tracked for insurance/value purposes — kept out of profit and margin math.</p>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">PC Items</div><div class="value">${pc.reduce((s,i)=>s+Number(i.qty||1),0)}</div><div class="sub">${pc.length} cards</div></div>
+        <div class="kpi"><div class="label">Cost Basis</div><div class="value">${fmtMoney(costBasisPC)}</div></div>
+        <div class="kpi"><div class="label">Market Value</div><div class="value">${fmtMoney(marketValuePC)}</div></div>
+        <div class="kpi"><div class="label">Unrealized Gain / Loss</div><div class="value ${unrealizedPC>=0?'pos':'neg'}">${unrealizedPC>=0?'+':''}${fmtMoney(unrealizedPC)}</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Sales Performance (Sold Items)</h2>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">Items Sold</div><div class="value">${sold.reduce((s,i)=>s+Number(i.qty||1),0)}</div></div>
+        <div class="kpi"><div class="label">Total Revenue</div><div class="value">${fmtMoney(revenue)}</div></div>
+        <div class="kpi"><div class="label">Fees + Shipping</div><div class="value">${fmtMoney(fees)}</div></div>
+        <div class="kpi"><div class="label">Gross Profit</div><div class="value ${grossProfit>=0?'pos':'neg'}">${fmtMoney(grossProfit)}</div></div>
+        <div class="kpi"><div class="label">Net Profit</div><div class="value ${netProfit>=0?'pos':'neg'}">${fmtMoney(netProfit)}</div></div>
+        <div class="kpi">
+          <div class="label">ROI</div>
+          <div class="value ${marginPct===null?'':(marginPct>=0?'pos':'neg')}">${marginPct===null?'—':(marginPct>=0?'+':'')+marginPct.toFixed(1)+'%'}</div>
+          <div class="sub">${multiple===null?'':multiple.toFixed(2)+'x your money'}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Cash Flow</h2>
+      <div class="kpi-grid">
+        <div class="kpi"><div class="label">Total Spent (All Purchases)</div><div class="value">${fmtMoney(totalSpent)}</div></div>
+        <div class="kpi"><div class="label">Total Received (Net of Fees)</div><div class="value">${fmtMoney(totalReceived)}</div></div>
+        <div class="kpi"><div class="label">Net Cash on Hand</div><div class="value ${cashOnHand>=0?'pos':'neg'}">${cashOnHand>=0?'+':''}${fmtMoney(cashOnHand)}</div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Audit Trail Status</h2>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 6px;">
+        ${transactions.filter(t=>!t.voided).length} recorded ledger entries.
+        ${lastTxn ? 'Last entry logged ' + fmtStamp(lastTxn.createdAt) + '.' : 'No entries recorded yet.'}
+      </p>
+      <button class="small" onclick="switchTab('ledger')">View full ledger →</button>
+    </div>
+  `;
+  document.getElementById('tab-dashboard').innerHTML = html;
+}
+
+/* ---------------- INVENTORY ---------------- */
+function slabHtml(grading){
+  if(!grading || grading.trim()==='' || grading.toLowerCase()==='raw'){
+    return `<span class="slab raw"><span class="co">RAW</span></span>`;
+  }
+  const parts = grading.trim().split(/\s+/);
+  const co = parts[0].toUpperCase();
+  const grade = parts.slice(1).join(' ') || '';
+  return `<span class="slab"><span class="co">${co}</span><span class="grade">${grade}</span></span>`;
+}
+function statusClass(s){
+  if(s==='Sold') return 'sold';
+  if(s==='Listed for Sale') return 'listed';
+  if(s==='Traded Away') return 'traded';
+  if(s==='Personal Collection (PC)') return 'pc';
+  return 'inv';
+}
+
+let invFilters = { status:'All', category:'All', grading:'All', search:'' };
+
+function itemMargin(i){
+  if(i.status!=='Sold' || !i.purchasePrice) return null;
+  const cost = Number(i.purchasePrice||0);
+  const netProfit = Number(i.salePrice||0) - cost - Number(i.fees||0) - Number(i.shipping||0);
+  const marginPct = cost>0 ? (netProfit/cost*100) : null;
+  const multiple = cost>0 ? (Number(i.salePrice||0)/cost) : null;
+  return {marginPct, multiple};
+}
+
+function updateInvFilter(key, val){
+  invFilters[key] = val;
+  renderInventory();
+  if(key==='search'){
+    const input = document.querySelector('#tab-inventory input[type="text"]');
+    if(input){ input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  }
+}
+
+function renderInventory(){
+  const statuses = ['All','In Inventory','Listed for Sale','Personal Collection (PC)','Sold','Traded Away'];
+  const categories = ['All', ...new Set(items.map(i=>i.category).filter(Boolean))];
+  const gradings = ['All', ...new Set(items.map(i=>(i.grading||'Raw').trim() || 'Raw'))];
+
+  const filtered = items.filter(i=>{
+    if(invFilters.status!=='All' && i.status!==invFilters.status) return false;
+    if(invFilters.category!=='All' && i.category!==invFilters.category) return false;
+    if(invFilters.grading!=='All' && (i.grading||'Raw').trim()!==invFilters.grading) return false;
+    if(invFilters.search){
+      const q = invFilters.search.toLowerCase();
+      const hay = `${i.player||''} ${i.setInfo||''} ${i.sportGame||''} ${i.cardNumber||''}`.toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const rows = filtered.map(i=>{
+    const m = itemMargin(i);
+    const marginCell = m===null ? '<span style="color:var(--muted);">—</span>'
+      : `<span class="${m.marginPct>=0?'amt-pos':'amt-neg'}">${m.marginPct>=0?'+':''}${m.marginPct.toFixed(1)}%</span><br><span style="color:var(--muted);font-size:11px;">${m.multiple.toFixed(2)}x</span>`;
+    return `
+    <tr>
+      <td class="mono" style="color:var(--muted);">${i.id.slice(-6)}</td>
+      <td>${slabHtml(i.grading)}</td>
+      <td><strong>${i.player||''}</strong><br><span style="color:var(--muted);font-size:11.5px;">${i.category||''} · ${i.sportGame||''}</span></td>
+      <td>${i.setInfo||''}${i.cardNumber? ' · #'+i.cardNumber : ''}</td>
+      <td>${i.qty||1}</td>
+      <td>${fmtMoney(i.purchasePrice)}<br><span style="color:var(--muted);font-size:11px;">${fmtDate(i.purchaseDate)}</span></td>
+      <td>${fmtMoney(i.marketValue)}</td>
+      <td>${marginCell}</td>
+      <td><span class="status ${statusClass(i.status)}">${i.status}</span></td>
+      <td>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${i.status!=='Sold' ? `<button class="small" onclick="openSellModal('${i.id}')">Mark Sold</button>` : ''}
+          <button class="small" onclick="openItemModal('${i.id}')">Edit</button>
+          <button class="small danger" onclick="deleteItem('${i.id}')">Delete</button>
+        </div>
+      </td>
+    </tr>
+  `;}).join('');
+
+  const html = `
+    <div class="panel">
+      <div class="section-row">
+        <h2 style="margin:0;">Inventory (${filtered.length}${filtered.length!==items.length ? ' of '+items.length : ''})</h2>
+        <button class="primary" onclick="openItemModal(null)">+ Add Card</button>
+      </div>
+      <div class="form-grid" style="margin-bottom:16px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));">
+        <div>
+          <label>Status</label>
+          <select onchange="updateInvFilter('status', this.value)">
+            ${statuses.map(s=>`<option value="${s}" ${invFilters.status===s?'selected':''}>${s}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label>Category</label>
+          <select onchange="updateInvFilter('category', this.value)">
+            ${categories.map(c=>`<option value="${c}" ${invFilters.category===c?'selected':''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label>Grading</label>
+          <select onchange="updateInvFilter('grading', this.value)">
+            ${gradings.map(g=>`<option value="${g}" ${invFilters.grading===g?'selected':''}>${g}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-span-2">
+          <label>Search (player, set, game, card #)</label>
+          <input type="text" value="${invFilters.search}" placeholder="e.g. Charizard, 1999, Topps..." oninput="updateInvFilter('search', this.value)">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="ghost" onclick="clearInvFilters()">Clear filters</button>
+        </div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th>ID</th><th>Grade</th><th>Card</th><th>Set / #</th><th>Qty</th>
+            <th>Purchase</th><th>Market Value</th><th>ROI</th><th>Status</th><th>Actions</th>
+          </tr></thead>
+          <tbody>
+            ${rows || `<tr class="empty-row"><td colspan="10">${items.length===0 ? 'No cards yet — add your first one.' : 'No cards match these filters.'}</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  document.getElementById('tab-inventory').innerHTML = html;
+}
+
+function clearInvFilters(){
+  invFilters = { status:'All', category:'All', grading:'All', search:'' };
+  renderInventory();
+}
+
+const ITEM_FIELDS = [
+  {k:'category',label:'Category',type:'select',opts:['Sports Card','TCG']},
+  {k:'sportGame',label:'Sport / Game',type:'text',ph:'Basketball, Pokemon...'},
+  {k:'player',label:'Player / Character',type:'text'},
+  {k:'setInfo',label:'Set / Year',type:'text',ph:'2003 Topps Chrome'},
+  {k:'cardNumber',label:'Card #',type:'text'},
+  {k:'grading',label:'Grading (e.g. PSA 9, or Raw)',type:'text',ph:'PSA 9'},
+  {k:'certNumber',label:'Cert #',type:'text'},
+  {k:'qty',label:'Qty',type:'number',ph:'1'},
+  {k:'purchaseDate',label:'Purchase Date',type:'date'},
+  {k:'purchasePrice',label:'Purchase Price ($)',type:'number'},
+  {k:'storageLocation',label:'Storage Location',type:'text'},
+  {k:'status',label:'Status',type:'select',opts:['In Inventory','Listed for Sale','Personal Collection (PC)','Sold','Traded Away']},
+  {k:'marketValue',label:'Market Comp Value ($)',type:'number'},
+  {k:'compDate',label:'Comp Date',type:'date'},
+  {k:'notes',label:'Notes',type:'textarea',span:2},
+];
+
+function openItemModal(id){
+  editingItemId = id;
+  const item = id ? items.find(i=>i.id===id) : {};
+  document.getElementById('itemModalTitle').textContent = id ? 'Edit Card' : 'Add Card';
+  const grid = document.getElementById('itemFormGrid');
+  grid.innerHTML = ITEM_FIELDS.map(f=>{
+    const val = item[f.k] !== undefined ? item[f.k] : '';
+    const span = f.span ? `field-span-${f.span}` : '';
+    if(f.type==='select'){
+      return `<div class="${span}"><label>${f.label}</label><select id="f_${f.k}">
+        ${f.opts.map(o=>`<option value="${o}" ${val===o?'selected':''}>${o}</option>`).join('')}
+      </select></div>`;
+    }
+    if(f.type==='textarea'){
+      return `<div class="${span}"><label>${f.label}</label><textarea id="f_${f.k}">${val}</textarea></div>`;
+    }
+    return `<div class="${span}"><label>${f.label}</label><input id="f_${f.k}" type="${f.type}" value="${val}" placeholder="${f.ph||''}"></div>`;
+  }).join('');
+  document.getElementById('itemModalOverlay').classList.add('open');
+}
+function closeItemModal(){ document.getElementById('itemModalOverlay').classList.remove('open'); editingItemId=null; }
+
+async function submitItemForm(){
+  const data = {};
+  ITEM_FIELDS.forEach(f=>{ data[f.k] = document.getElementById('f_'+f.k).value; });
+  if(!data.player){ alert('Please enter a player or character name.'); return; }
+
+  if(editingItemId){
+    const idx = items.findIndex(i=>i.id===editingItemId);
+    items[idx] = {...items[idx], ...data};
+  } else {
+    const id = uid();
+    const newItem = {id, ...data, createdAt: Date.now()};
+    items.push(newItem);
+    // log purchase transaction for audit trail
+    if(data.purchasePrice){
+      transactions.push({
+        id: uid(), type:'purchase', itemId:id,
+        description: `${data.player} — ${data.setInfo||''}`.trim(),
+        date: data.purchaseDate || new Date().toISOString().slice(0,10),
+        amount: Number(data.purchasePrice||0), fees:0, shipping:0, platform:'',
+        notes: 'Auto-logged from Inventory entry',
+        createdAt: Date.now(), voided:false
+      });
+      await saveTransactions();
+    }
+  }
+  await saveItems();
+  closeItemModal();
+  renderAll();
+}
+
+async function deleteItem(id){
+  if(!confirm('Delete this card from inventory? Its ledger transactions will remain for your records.')) return;
+  items = items.filter(i=>i.id!==id);
+  await saveItems();
+  renderAll();
+}
+
+/* ---- Sell flow ---- */
+const SELL_FIELDS = [
+  {k:'saleDate',label:'Sale Date',type:'date'},
+  {k:'salePrice',label:'Sale Price ($)',type:'number'},
+  {k:'platform',label:'Platform',type:'text',ph:'eBay, local, etc.'},
+  {k:'fees',label:'Fees ($)',type:'number'},
+  {k:'shipping',label:'Shipping Cost ($)',type:'number'},
+];
+function openSellModal(id){
+  sellingItemId = id;
+  const grid = document.getElementById('sellFormGrid');
+  grid.innerHTML = SELL_FIELDS.map(f=>`<div><label>${f.label}</label><input id="s_${f.k}" type="${f.type}" placeholder="${f.ph||''}"></div>`).join('');
+  document.getElementById('sellModalOverlay').classList.add('open');
+}
+function closeSellModal(){ document.getElementById('sellModalOverlay').classList.remove('open'); sellingItemId=null; }
+
+async function submitSellForm(){
+  const data = {};
+  SELL_FIELDS.forEach(f=>{ data[f.k] = document.getElementById('s_'+f.k).value; });
+  if(!data.salePrice){ alert('Enter a sale price.'); return; }
+  const idx = items.findIndex(i=>i.id===sellingItemId);
+  if(idx===-1) return;
+  items[idx] = {...items[idx], status:'Sold', saleDate:data.saleDate, salePrice:data.salePrice,
+    platform:data.platform, fees:data.fees||0, shipping:data.shipping||0};
+  transactions.push({
+    id: uid(), type:'sale', itemId: sellingItemId,
+    description: `${items[idx].player} — ${items[idx].setInfo||''}`.trim(),
+    date: data.saleDate || new Date().toISOString().slice(0,10),
+    amount: Number(data.salePrice||0), fees: Number(data.fees||0), shipping: Number(data.shipping||0),
+    platform: data.platform||'', notes:'Auto-logged from sale confirmation',
+    createdAt: Date.now(), voided:false
+  });
+  await saveItems();
+  await saveTransactions();
+  closeSellModal();
+  renderAll();
+}
+
+function txnProfit(t){
+  if(t.type!=='sale' || !t.itemId) return null;
+  const item = items.find(i=>i.id===t.itemId);
+  if(!item) return null;
+  const cost = Number(item.purchasePrice||0);
+  const profit = Number(t.amount||0) - Number(t.fees||0) - Number(t.shipping||0) - cost;
+  return profit;
+}
+
+let ledgerFilters = { type:'All', search:'', itemId:null, itemLabel:'' };
+
+function isolateLedgerItem(itemId, label){
+  ledgerFilters.itemId = itemId;
+  ledgerFilters.itemLabel = label;
+  renderLedger();
+}
+function clearLedgerItemFilter(){
+  ledgerFilters.itemId = null;
+  ledgerFilters.itemLabel = '';
+  renderLedger();
+}
+function updateLedgerFilter(key, val){
+  ledgerFilters[key] = val;
+  renderLedger();
+  if(key==='search'){
+    const input = document.querySelector('#tab-ledger input[type="text"]');
+    if(input){ input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+  }
+}
+function clearLedgerFilters(){
+  ledgerFilters = { type:'All', search:'', itemId:null, itemLabel:'' };
+  renderLedger();
+}
+
+/* ---------------- LEDGER ---------------- */
+function renderLedger(){
+  const filtered = transactions.filter(t=>{
+    if(ledgerFilters.itemId && t.itemId!==ledgerFilters.itemId) return false;
+    if(ledgerFilters.type!=='All' && t.type!==ledgerFilters.type) return false;
+    if(ledgerFilters.search){
+      const q = ledgerFilters.search.toLowerCase();
+      const hay = `${t.description||''} ${t.platform||''} ${t.notes||''}`.toLowerCase();
+      if(!hay.includes(q)) return false;
+    }
+    return true;
+  });
+  const sorted = [...filtered].sort((a,b)=> new Date(b.date) - new Date(a.date) || b.createdAt-a.createdAt);
+  const rows = sorted.map(t=>{
+    const profit = txnProfit(t);
+    const profitCell = profit===null ? '<span style="color:var(--muted);">—</span>'
+      : `<span class="${profit>=0?'amt-pos':'amt-neg'}"><strong>${profit>=0?'+':''}${fmtMoney(profit)}</strong></span>`;
+    const descHtml = t.itemId
+      ? `<a href="javascript:void(0)" onclick="isolateLedgerItem('${t.itemId}','${(t.description||'').replace(/'/g,"\\'")}')" style="color:var(--gold-bright);text-decoration:underline;cursor:pointer;">${t.description||''}</a>`
+      : (t.description||'');
+    return `
+    <tr class="${t.voided?'voided':''}">
+      <td class="mono" style="color:var(--muted);font-size:11.5px;">${t.id.slice(-6)}</td>
+      <td>${t.date}</td>
+      <td><span class="txn-type ${t.type}">${t.type.toUpperCase()}</span></td>
+      <td>${descHtml}</td>
+      <td class="${t.type==='sale'?'amt-pos':'amt-neg'}">${t.type==='sale'?'+':'-'}${fmtMoney(t.amount)}</td>
+      <td>${fmtMoney(t.fees)}</td>
+      <td>${fmtMoney(t.shipping)}</td>
+      <td>${profitCell}</td>
+      <td>${t.platform||'—'}</td>
+      <td class="mono" style="color:var(--muted);font-size:11px;">${fmtStamp(t.createdAt)}</td>
+      <td>${t.voided ? '<span style="color:var(--muted);">Voided</span>' : `<button class="small danger" onclick="voidTransaction('${t.id}')">Void</button>`}</td>
+    </tr>
+  `;}).join('');
+
+  const html = `
+    <div class="panel">
+      <div class="audit-note">
+        <strong>Audit trail:</strong> entries are never silently edited or deleted. Mistakes are marked <em>Voided</em> and kept visible, with the original recorded timestamp intact.
+      </div>
+      ${ledgerFilters.itemId ? `
+        <div class="audit-note" style="border-style:solid;border-color:var(--gold);">
+          <strong>Viewing history for:</strong> ${ledgerFilters.itemLabel}
+          <button class="small" style="margin-left:auto;" onclick="clearLedgerItemFilter()">Show all transactions</button>
+        </div>` : ''}
+      <div class="section-row">
+        <h2 style="margin:0;">Transaction Ledger (${filtered.filter(t=>!t.voided).length}${filtered.length!==transactions.length?' of '+transactions.filter(t=>!t.voided).length:''} active)</h2>
+        <button class="primary" onclick="openTxnModal()">+ Add Entry</button>
+      </div>
+      <div class="form-grid" style="margin-bottom:16px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));">
+        <div>
+          <label>Type</label>
+          <select onchange="updateLedgerFilter('type', this.value)">
+            ${['All','purchase','sale','other'].map(t=>`<option value="${t}" ${ledgerFilters.type===t?'selected':''}>${t==='All'?'All':t.toUpperCase()}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-span-2">
+          <label>Search (description, platform, notes)</label>
+          <input type="text" value="${ledgerFilters.search}" placeholder="e.g. Charizard, eBay..." oninput="updateLedgerFilter('search', this.value)">
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="ghost" onclick="clearLedgerFilters()">Clear filters</button>
+        </div>
+      </div>
+      <p style="color:var(--muted);font-size:11.5px;margin:-6px 0 12px;">Tip: click any card name below to instantly filter to just that card's full purchase → sale history.</p>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead><tr>
+            <th>ID</th><th>Date</th><th>Type</th><th>Description</th><th>Amount</th>
+            <th>Fees</th><th>Shipping</th><th>P&amp;L</th><th>Platform</th><th>Recorded</th><th></th>
+          </tr></thead>
+          <tbody>${rows || '<tr class="empty-row"><td colspan="11">No transactions match.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  document.getElementById('tab-ledger').innerHTML = html;
+}
+
+const TXN_FIELDS = [
+  {k:'type',label:'Type',type:'select',opts:['purchase','sale','other']},
+  {k:'date',label:'Date',type:'date'},
+  {k:'description',label:'Description',type:'text',ph:'Bulk lot, supplies, shipping box...',span:2},
+  {k:'amount',label:'Amount ($)',type:'number'},
+  {k:'fees',label:'Fees ($)',type:'number'},
+  {k:'shipping',label:'Shipping ($)',type:'number'},
+  {k:'platform',label:'Platform / Counterparty',type:'text'},
+  {k:'notes',label:'Notes',type:'textarea',span:2},
+];
+function openTxnModal(){
+  const grid = document.getElementById('txnFormGrid');
+  grid.innerHTML = TXN_FIELDS.map(f=>{
+    const span = f.span ? `field-span-${f.span}` : '';
+    if(f.type==='select'){
+      return `<div class="${span}"><label>${f.label}</label><select id="t_${f.k}">${f.opts.map(o=>`<option value="${o}">${o}</option>`).join('')}</select></div>`;
+    }
+    if(f.type==='textarea'){
+      return `<div class="${span}"><label>${f.label}</label><textarea id="t_${f.k}"></textarea></div>`;
+    }
+    return `<div class="${span}"><label>${f.label}</label><input id="t_${f.k}" type="${f.type}" placeholder="${f.ph||''}"></div>`;
+  }).join('');
+  document.getElementById('txnModalOverlay').classList.add('open');
+}
+function closeTxnModal(){ document.getElementById('txnModalOverlay').classList.remove('open'); }
+
+async function submitTxnForm(){
+  const data = {};
+  TXN_FIELDS.forEach(f=>{ data[f.k] = document.getElementById('t_'+f.k).value; });
+  if(!data.amount || !data.date){ alert('Date and amount are required.'); return; }
+  transactions.push({
+    id: uid(), type: data.type, itemId: null, description: data.description,
+    date: data.date, amount: Number(data.amount||0), fees: Number(data.fees||0),
+    shipping: Number(data.shipping||0), platform: data.platform, notes: data.notes,
+    createdAt: Date.now(), voided:false
+  });
+  await saveTransactions();
+  closeTxnModal();
+  renderAll();
+}
+
+async function voidTransaction(id){
+  if(!confirm('Void this entry? It will stay visible in the ledger, marked as voided, for audit purposes.')) return;
+  const idx = transactions.findIndex(t=>t.id===id);
+  transactions[idx].voided = true;
+  await saveTransactions();
+  renderAll();
+}
+
+function exportCSV(){
+  const header = ['ID','Date','Type','Description','Amount','Fees','Shipping','Platform','Recorded At','Voided'];
+  const rows = transactions.map(t=>[t.id,t.date,t.type,`"${(t.description||'').replace(/"/g,'""')}"`,t.amount,t.fees,t.shipping,`"${t.platform||''}"`,new Date(t.createdAt).toISOString(),t.voided]);
+  const csv = [header.join(','), ...rows.map(r=>r.join(','))].join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'card-vault-ledger.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+checkExistingSession();
+</script>
+</body>
+</html>
