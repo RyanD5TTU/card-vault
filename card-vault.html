@@ -285,38 +285,90 @@ async function checkExistingSession(){
   }
 }
 
+// ---- Field mapping between JS (camelCase) and DB (snake_case) ----
+function toNumOrNull(v){ return (v===''||v===undefined||v===null) ? null : Number(v); }
+function toDateOrNull(v){ return (v===''||v===undefined||v===null) ? null : v; }
+
+function cardFromRow(r){
+  return {
+    id: r.id, category: r.category||'', sportGame: r.sport_game||'', player: r.player||'',
+    setInfo: r.set_info||'', cardNumber: r.card_number||'', grading: r.grading||'',
+    certNumber: r.cert_number||'', qty: r.qty||1, purchaseDate: r.purchase_date||'',
+    purchasePrice: r.purchase_price, storageLocation: r.storage_location||'',
+    status: r.status||'In Inventory', marketValue: r.market_value, compDate: r.comp_date||'',
+    saleDate: r.sale_date||'', salePrice: r.sale_price, platform: r.platform||'',
+    fees: r.fees||0, shipping: r.shipping||0, notes: r.notes||''
+  };
+}
+function cardToRow(item){
+  return {
+    category: item.category||null, sport_game: item.sportGame||null, player: item.player||null,
+    set_info: item.setInfo||null, card_number: item.cardNumber||null, grading: item.grading||null,
+    cert_number: item.certNumber||null, qty: toNumOrNull(item.qty) ?? 1,
+    purchase_date: toDateOrNull(item.purchaseDate), purchase_price: toNumOrNull(item.purchasePrice),
+    storage_location: item.storageLocation||null, status: item.status||'In Inventory',
+    market_value: toNumOrNull(item.marketValue), comp_date: toDateOrNull(item.compDate),
+    sale_date: toDateOrNull(item.saleDate), sale_price: toNumOrNull(item.salePrice),
+    platform: item.platform||null, fees: toNumOrNull(item.fees) ?? 0,
+    shipping: toNumOrNull(item.shipping) ?? 0, notes: item.notes||null
+  };
+}
+function txnFromRow(r){
+  return {
+    id: r.id, type: r.type, itemId: r.card_id, description: r.description||'',
+    date: r.date, amount: r.amount, fees: r.fees, shipping: r.shipping,
+    platform: r.platform||'', notes: r.notes||'', createdAt: r.created_at, voided: r.voided
+  };
+}
+function txnToRow(t){
+  return {
+    card_id: t.itemId||null, type: t.type, description: t.description||null,
+    date: t.date, amount: toNumOrNull(t.amount) ?? 0, fees: toNumOrNull(t.fees) ?? 0,
+    shipping: toNumOrNull(t.shipping) ?? 0, platform: t.platform||null,
+    notes: t.notes||null, voided: !!t.voided
+  };
+}
+
 async function loadData(){
   try{
-    const { data, error } = await sb.from('kv_store').select('key,value').eq('user_id', currentUserId);
+    const { data, error } = await sb.from('cards').select('*').order('created_at',{ascending:true});
     if(error) throw error;
-    const invRow = data.find(r=>r.key==='inventory-items');
-    const txnRow = data.find(r=>r.key==='transactions');
-    items = invRow ? invRow.value : [];
-    transactions = txnRow ? txnRow.value : [];
-  }catch(e){
-    console.error('Failed to load data', e);
-    items = []; transactions = [];
-  }
+    items = data.map(cardFromRow);
+  }catch(e){ console.error('Failed to load cards', e); items = []; }
+  try{
+    const { data, error } = await sb.from('ledger_transactions').select('*').order('created_at',{ascending:true});
+    if(error) throw error;
+    transactions = data.map(txnFromRow);
+  }catch(e){ console.error('Failed to load transactions', e); transactions = []; }
   renderAll();
 }
 
-async function saveItems(){
-  try{
-    const { error } = await sb.from('kv_store').upsert(
-      { key:'inventory-items', user_id: currentUserId, value: items, updated_at: new Date().toISOString() },
-      { onConflict:'key,user_id' }
-    );
-    if(error) throw error;
-  }catch(e){ console.error('Failed to save inventory', e); alert('Could not save — please try again.'); }
+async function insertCard(item){
+  const row = cardToRow(item);
+  row.user_id = currentUserId;
+  const { data, error } = await sb.from('cards').insert(row).select().single();
+  if(error){ console.error('Failed to insert card', error); alert('Could not save card — please try again.'); return null; }
+  return cardFromRow(data);
 }
-async function saveTransactions(){
-  try{
-    const { error } = await sb.from('kv_store').upsert(
-      { key:'transactions', user_id: currentUserId, value: transactions, updated_at: new Date().toISOString() },
-      { onConflict:'key,user_id' }
-    );
-    if(error) throw error;
-  }catch(e){ console.error('Failed to save transactions', e); alert('Could not save — please try again.'); }
+async function updateCardRow(id, item){
+  const row = cardToRow(item);
+  const { error } = await sb.from('cards').update(row).eq('id', id);
+  if(error){ console.error('Failed to update card', error); alert('Could not save changes — please try again.'); }
+}
+async function deleteCardRow(id){
+  const { error } = await sb.from('cards').delete().eq('id', id);
+  if(error){ console.error('Failed to delete card', error); alert('Could not delete — please try again.'); }
+}
+async function insertTxn(t){
+  const row = txnToRow(t);
+  row.user_id = currentUserId;
+  const { data, error } = await sb.from('ledger_transactions').insert(row).select().single();
+  if(error){ console.error('Failed to insert transaction', error); alert('Could not save transaction — please try again.'); return null; }
+  return txnFromRow(data);
+}
+async function updateTxnVoidRow(id, voided){
+  const { error } = await sb.from('ledger_transactions').update({voided}).eq('id', id);
+  if(error){ console.error('Failed to update transaction', error); alert('Could not update — please try again.'); }
 }
 
 function switchTab(name){
@@ -432,7 +484,7 @@ function renderDashboard(){
       <td>${fmtMoney(x.item.marketValue)}</td>
     </tr>`).join('');
 
-  const lastTxn = transactions.filter(t=>!t.voided).sort((a,b)=>b.createdAt-a.createdAt)[0];
+  const lastTxn = transactions.filter(t=>!t.voided).sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt))[0];
 
   const html = `
     <div class="panel">
@@ -724,33 +776,33 @@ async function submitItemForm(){
 
   if(editingItemId){
     const idx = items.findIndex(i=>i.id===editingItemId);
-    items[idx] = {...items[idx], ...data};
+    const updated = {...items[idx], ...data};
+    await updateCardRow(editingItemId, updated);
+    items[idx] = updated;
   } else {
-    const id = uid();
-    const newItem = {id, ...data, createdAt: Date.now()};
+    const newItem = await insertCard(data);
+    if(!newItem){ closeItemModal(); return; }
     items.push(newItem);
     // log purchase transaction for audit trail
     if(data.purchasePrice){
-      transactions.push({
-        id: uid(), type:'purchase', itemId:id,
+      const txn = await insertTxn({
+        type:'purchase', itemId: newItem.id,
         description: `${data.player} — ${data.setInfo||''}`.trim(),
         date: data.purchaseDate || new Date().toISOString().slice(0,10),
         amount: Number(data.purchasePrice||0), fees:0, shipping:0, platform:'',
-        notes: 'Auto-logged from Inventory entry',
-        createdAt: Date.now(), voided:false
+        notes: 'Auto-logged from Inventory entry', voided:false
       });
-      await saveTransactions();
+      if(txn) transactions.push(txn);
     }
   }
-  await saveItems();
   closeItemModal();
   renderAll();
 }
 
 async function deleteItem(id){
   if(!confirm('Delete this card from inventory? Its ledger transactions will remain for your records.')) return;
+  await deleteCardRow(id);
   items = items.filter(i=>i.id!==id);
-  await saveItems();
   renderAll();
 }
 
@@ -776,18 +828,18 @@ async function submitSellForm(){
   if(!data.salePrice){ alert('Enter a sale price.'); return; }
   const idx = items.findIndex(i=>i.id===sellingItemId);
   if(idx===-1) return;
-  items[idx] = {...items[idx], status:'Sold', saleDate:data.saleDate, salePrice:data.salePrice,
+  const updated = {...items[idx], status:'Sold', saleDate:data.saleDate, salePrice:data.salePrice,
     platform:data.platform, fees:data.fees||0, shipping:data.shipping||0};
-  transactions.push({
-    id: uid(), type:'sale', itemId: sellingItemId,
-    description: `${items[idx].player} — ${items[idx].setInfo||''}`.trim(),
+  await updateCardRow(sellingItemId, updated);
+  items[idx] = updated;
+  const txn = await insertTxn({
+    type:'sale', itemId: sellingItemId,
+    description: `${updated.player} — ${updated.setInfo||''}`.trim(),
     date: data.saleDate || new Date().toISOString().slice(0,10),
     amount: Number(data.salePrice||0), fees: Number(data.fees||0), shipping: Number(data.shipping||0),
-    platform: data.platform||'', notes:'Auto-logged from sale confirmation',
-    createdAt: Date.now(), voided:false
+    platform: data.platform||'', notes:'Auto-logged from sale confirmation', voided:false
   });
-  await saveItems();
-  await saveTransactions();
+  if(txn) transactions.push(txn);
   closeSellModal();
   renderAll();
 }
@@ -840,7 +892,7 @@ function renderLedger(){
     }
     return true;
   });
-  const sorted = [...filtered].sort((a,b)=> new Date(b.date) - new Date(a.date) || b.createdAt-a.createdAt);
+  const sorted = [...filtered].sort((a,b)=> new Date(b.date) - new Date(a.date) || new Date(b.createdAt)-new Date(a.createdAt));
   const rows = sorted.map(t=>{
     const profit = txnProfit(t);
     const profitCell = profit===null ? '<span style="color:var(--muted);">—</span>'
@@ -938,22 +990,21 @@ async function submitTxnForm(){
   const data = {};
   TXN_FIELDS.forEach(f=>{ data[f.k] = document.getElementById('t_'+f.k).value; });
   if(!data.amount || !data.date){ alert('Date and amount are required.'); return; }
-  transactions.push({
-    id: uid(), type: data.type, itemId: null, description: data.description,
+  const txn = await insertTxn({
+    type: data.type, itemId: null, description: data.description,
     date: data.date, amount: Number(data.amount||0), fees: Number(data.fees||0),
-    shipping: Number(data.shipping||0), platform: data.platform, notes: data.notes,
-    createdAt: Date.now(), voided:false
+    shipping: Number(data.shipping||0), platform: data.platform, notes: data.notes, voided:false
   });
-  await saveTransactions();
+  if(txn) transactions.push(txn);
   closeTxnModal();
   renderAll();
 }
 
 async function voidTransaction(id){
   if(!confirm('Void this entry? It will stay visible in the ledger, marked as voided, for audit purposes.')) return;
+  await updateTxnVoidRow(id, true);
   const idx = transactions.findIndex(t=>t.id===id);
   transactions[idx].voided = true;
-  await saveTransactions();
   renderAll();
 }
 
