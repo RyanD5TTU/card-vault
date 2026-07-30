@@ -855,6 +855,11 @@ function txnProfit(t){
   return profit;
 }
 
+function txnGrossProfit(t){
+  if(t.type!=='sale') return null;
+  return Number(t.amount||0) - Number(t.fees||0) - Number(t.shipping||0);
+}
+
 let ledgerFilters = { type:'All', search:'', itemId:null, itemLabel:'' };
 
 function isolateLedgerItem(itemId, label){
@@ -895,8 +900,11 @@ function renderLedger(){
   const sorted = [...filtered].sort((a,b)=> new Date(b.date) - new Date(a.date) || new Date(b.createdAt)-new Date(a.createdAt));
   const rows = sorted.map(t=>{
     const profit = txnProfit(t);
+    const gross = txnGrossProfit(t);
     const profitCell = profit===null ? '<span style="color:var(--muted);">—</span>'
       : `<span class="${profit>=0?'amt-pos':'amt-neg'}"><strong>${profit>=0?'+':''}${fmtMoney(profit)}</strong></span>`;
+    const grossCell = gross===null ? '<span style="color:var(--muted);">—</span>'
+      : `<span class="${gross>=0?'amt-pos':'amt-neg'}">${gross>=0?'+':''}${fmtMoney(gross)}</span>`;
     const descHtml = t.itemId
       ? `<a href="javascript:void(0)" onclick="isolateLedgerItem('${t.itemId}','${(t.description||'').replace(/'/g,"\\'")}')" style="color:var(--gold-bright);text-decoration:underline;cursor:pointer;">${t.description||''}</a>`
       : (t.description||'');
@@ -909,6 +917,7 @@ function renderLedger(){
       <td class="${isCashInflow(t.type)?'amt-pos':'amt-neg'}">${isCashInflow(t.type)?'+':'-'}${fmtMoney(t.amount)}</td>
       <td>${fmtMoney(t.fees)}</td>
       <td>${fmtMoney(t.shipping)}</td>
+      <td>${grossCell}</td>
       <td>${profitCell}</td>
       <td>${t.platform||'—'}</td>
       <td class="mono" style="color:var(--muted);font-size:11px;">${fmtStamp(t.createdAt)}</td>
@@ -950,9 +959,9 @@ function renderLedger(){
         <table>
           <thead><tr>
             <th>ID</th><th>Date</th><th>Type</th><th>Description</th><th>Amount</th>
-            <th>Fees</th><th>Shipping</th><th>P&amp;L</th><th>Platform</th><th>Recorded</th><th></th>
+            <th>Fees</th><th>Shipping</th><th>Gross Profit</th><th>P&amp;L</th><th>Platform</th><th>Recorded</th><th></th>
           </tr></thead>
-          <tbody>${rows || '<tr class="empty-row"><td colspan="11">No transactions match.</td></tr>'}</tbody>
+          <tbody>${rows || '<tr class="empty-row"><td colspan="12">No transactions match.</td></tr>'}</tbody>
         </table>
       </div>
     </div>
